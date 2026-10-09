@@ -40,7 +40,8 @@ restore @restore_name
 call 'wallfix_fn.p3dat'
 @fix_wall_contacts
 ; after this restore cush_tag holds the SAVED tag, e.g. 'stiff_w16_wf'
-[io.out('>>> restored ' + restore_name + '   saved cush_tag = ' + cush_tag)]
+; (restore_name itself is wiped by the restore -- do not use it here)
+[io.out('>>> restored cushion bed, saved cush_tag = ' + cush_tag)]
 
 ; IMPORTANT: 'restore' reloads the cushion's saved FISH state and WIPES every
 ; global set before it. cush_tag is replaced by the saved tag ('<tag>_w16_wf'), but the
