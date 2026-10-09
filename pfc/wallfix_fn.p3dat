@@ -1,0 +1,47 @@
+; wallfix_fn.p3dat -- defines @fix_wall_contacts (called after each restore)
+; Resets EVERY existing ball-facet contact (cushion ball on floor or side wall)
+; to the genesis design values, i.e. the same values that cmat default gives to
+; ball-facet contacts created later:  emod 5.0e9, kratio 1.0, fric 0.0, dp_nratio 0.0
+; kn = A*E/L with A = pi r^2, L = r  ->  kn = pi*r*E   (PFC deformability method,
+; verified by wallcheck_med_w16.txt: kn/(pi r) = 5.0e9 exactly)
+; v3: loops over contact.list.ALL (incl. INACTIVE contacts). wfdiag showed that
+; contact.list() returns only ACTIVE contacts; the inactive ones kept the old values
+; and re-activated with them (88 after 2000 cycles, all with pre-existing ids).
+def fix_wall_contacts
+    local nfix = 0
+    local ct
+    loop foreach ct contact.list.all('ball-facet')
+        local bp = contact.end1(ct)
+        local r = ball.radius(bp)
+        local kn = math.pi * r * 5.0e9
+        contact.prop(ct, 'kn') = kn
+        contact.prop(ct, 'ks') = kn
+        contact.prop(ct, 'fric') = 0.0
+        contact.prop(ct, 'dp_nratio') = 0.0
+        nfix = nfix + 1
+    endloop
+    io.out('>>> fix_wall_contacts: reset ' + string(nfix) + ' ball-facet contacts to 5e9 / kratio 1 / fric 0 / dp 0')
+end
+
+; @dump_wf : writes selfcheck_<cush_tag>.txt from the globals set by @cushion_selfcheck
+; (defined here because the seed-10001 beds may not contain dump_selfcheck)
+def dump_wf
+    local ff = wall.force.contact(wall.find(1))
+    local fs_y = 0.0
+    local k
+    loop k (2, 5)
+        fs_y = fs_y + comp.y(wall.force.contact(wall.find(k)))
+    endloop
+    local buf = array.create(8)
+    buf(1) = 'tag = ' + cush_tag + '   (wall contacts reset to design: 5e9 / kratio 1 / fric 0 / dp 0)'
+    buf(2) = 'particle_count = ' + string(cush_nball)
+    buf(3) = 'H_mean = ' + string(cush_heff) + '   H_max = ' + string(cush_hmax) + '   porosity_n = ' + string(cush_poros)
+    buf(4) = 'N_bb = ' + string(cush_nbb) + '   Z_avg = ' + string(cush_zavg) + '   N_floor = ' + string(cush_nfloor)
+    buf(5) = 'v_max = ' + string(cush_vmax) + '   E_k = ' + string(cush_ek) + '   Funbal_max = ' + string(cush_fubmax) + '   Funbal/mpg = ' + string(cush_fubrel)
+    buf(6) = 'y_bottom = ' + string(cush_ybot) + '   y_centre_min = ' + string(cush_ycenmin) + '   N_over = ' + string(cush_nover)
+    buf(7) = 'F_floor_y = ' + string(comp.y(ff)) + '   F_side_y = ' + string(fs_y)
+    local s = file.open('selfcheck_' + cush_tag + '.txt', 1, 1)
+    file.write(buf, 7)
+    file.close
+    io.out('>>> selfcheck_' + cush_tag + '.txt written')
+end

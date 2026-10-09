@@ -1,0 +1,256 @@
+; ============================================================
+;  oedo_fn.p3dat   (PFC3D 5.00.25)  -- numerical oedometer (confined compression)
+;  Called after each restore of a cushion_*_w16_wf bed. Uses the EXISTING box as the
+;  oedometer ring: rigid floor (wall 1) + four frictionless rigid side walls (2-5,
+;  fric 0 after @fix_wall_contacts). A rigid, frictionless loading plate (wall 6) is
+;  added just above the highest ball and servo-controlled to a sequence of vertical
+;  stresses (stage loading). Each stage is held until |sig-target|/target < oe_tol
+;  and the average unbalanced-force ratio < oe_ar.
+;  Results per bed:  oedo_<oe_tag>.txt
+;    sigma_v (plate), sigma_floor, plate height H, strain eps (from seating stage),
+;    lateral stress sigma_h (side walls), tangent constrained modulus M = dsig/deps,
+;    incremental K0 = dsig_h/dsig_v, nu = K0/(1+K0), E = M(1+nu)(1-2nu)/(1-nu),
+;    Es(100-200 kPa) as used in Chinese codes (Es1-2).
+;  E_c of the bed is not taken from file names: it is back-calculated from every active
+;  ball-ball contact, E = kn (r1+r2) / (pi min(r1,r2)^2)  (PFC deformability method).
+; ============================================================
+
+def oedo_prepare
+    global oe_L      = 1.6            ; box inner width (x and z), cx_half = 0.80
+    global oe_A      = oe_L * oe_L
+    global oe_af     = 0.90           ; plate half-width (> box, like the floor)
+    global oe_plate  = 6
+    global oe_tol    = 5.0e-3         ; stress tolerance per stage
+    global oe_ar     = 1.0e-4         ; average ratio per stage
+    global oe_vmax   = 0.03           ; plate speed limit (m/s)
+    global oe_alpha  = 0.5            ; servo gain safety factor
+    global oe_maxcyc = 200000         ; max cycles per stage
+    global oe_gain   = 0.0
+    global oe_sig    = 0.0
+    global oe_cnt    = 0
+    global oe_gcnt   = 0
+    global oe_done   = 0
+    global oe_hitmax = 0
+    ; ---- stage list (Pa): seating, loading, unloading ----
+    global oe_ns = 11
+    global oe_tg = array.create(oe_ns)
+    oe_tg(1)  = 5.0e3
+    oe_tg(2)  = 12.5e3
+    oe_tg(3)  = 25.0e3
+    oe_tg(4)  = 50.0e3
+    oe_tg(5)  = 100.0e3
+    oe_tg(6)  = 200.0e3
+    oe_tg(7)  = 400.0e3
+    oe_tg(8)  = 800.0e3
+    oe_tg(9)  = 1600.0e3
+    oe_tg(10) = 400.0e3
+    oe_tg(11) = 100.0e3
+    global oe_tgt = oe_tg(1)
+    global oe_res = array.create(oe_ns, 8)
+    ; ---- bed top, weight ----
+    local ytop = -1.0e20
+    local wsum = 0.0
+    local nb = 0
+    local bp
+    loop foreach bp ball.list
+        if ball.group(bp) == 'cushion' then
+            nb = nb + 1
+            wsum = wsum + ball.mass(bp) * 9.81
+            local yt = ball.pos.y(bp) + ball.radius(bp)
+            if yt > ytop then
+                ytop = yt
+            endif
+        endif
+    endloop
+    global oe_nball = nb
+    global oe_wbed  = wsum
+    global oe_ytop  = ytop
+    global oe_yp0   = ytop + 0.002
+    ; ---- particle contact modulus from ball-ball kn ----
+    local se = 0.0
+    local emin = 1.0e30
+    local emax = -1.0e30
+    local skr = 0.0
+    local sfr = 0.0
+    local nc = 0
+    local ct
+    loop foreach ct contact.list('ball-ball')
+        if contact.active(ct) == true then
+            local b1 = contact.end1(ct)
+            local b2 = contact.end2(ct)
+            local r1 = ball.radius(b1)
+            local r2 = ball.radius(b2)
+            local rm = math.min(r1, r2)
+            local kn = contact.prop(ct, 'kn')
+            local ks = contact.prop(ct, 'ks')
+            local ee = kn * (r1 + r2) / (math.pi * rm * rm)
+            se = se + ee
+            emin = math.min(emin, ee)
+            emax = math.max(emax, ee)
+            if ks > 0.0 then
+                skr = skr + kn / ks
+            endif
+            sfr = sfr + contact.prop(ct, 'fric')
+            nc = nc + 1
+        endif
+    endloop
+    global oe_nbb   = nc
+    global oe_Ec    = se / nc
+    global oe_Ecmin = emin
+    global oe_Ecmax = emax
+    global oe_krat  = skr / nc
+    global oe_fric  = sfr / nc
+    io.out('>>> oedo ' + oe_tag + ': N=' + string(nb) + '  E_c=' + string(oe_Ec/1e6) + ' MPa  kratio=' + string(oe_krat) + '  fric=' + string(oe_fric) + '  y_top=' + string(ytop))
+end
+
+def oedo_plate_y
+    local wp = wall.find(oe_plate)
+    local sy = 0.0
+    local nv = 0
+    local vx
+    loop foreach vx wall.vertexlist(wp)
+        sy = sy + wall.vertex.pos.y(vx)
+        nv = nv + 1
+    endloop
+    oedo_plate_y = sy / nv
+end
+
+def oedo_gain
+    local wp = wall.find(oe_plate)
+    local sk = 0.0
+    local ct
+    loop foreach ct wall.contactmap.all(wp)
+        if contact.active(ct) == true then
+            sk = sk + contact.prop(ct, 'kn')
+        endif
+    endloop
+    if sk > 0.0 then
+        oe_gain = oe_alpha * oe_A / (sk * global.timestep)
+    else
+        oe_gain = 1.0e6
+    endif
+end
+
+; servo: registered with  set fish callback 1.0 @servo_plate
+def servo_plate
+    local wp = wall.find(oe_plate)
+    oe_sig = comp.y(wall.force.contact(wp)) / oe_A
+    local v = oe_gain * (oe_sig - oe_tgt)
+    v = math.sgn(v) * math.min(oe_vmax, math.abs(v))
+    wall.vel.x(wp) = 0.0
+    wall.vel.y(wp) = v
+    wall.vel.z(wp) = 0.0
+end
+
+def oedo_halt
+    oedo_halt = 0
+    oe_cnt = oe_cnt + 1
+    oe_gcnt = oe_gcnt + 1
+    if oe_gcnt >= 100 then
+        oedo_gain
+        oe_gcnt = 0
+    endif
+    if oe_cnt >= oe_maxcyc then
+        oe_hitmax = 1
+        oe_done = 1
+        oedo_halt = 1
+        exit
+    endif
+    if math.abs(oe_sig - oe_tgt) / oe_tgt > oe_tol then
+        exit
+    endif
+    if mech.solve('aratio') > oe_ar then
+        exit
+    endif
+    oe_done = 1
+    oedo_halt = 1
+end
+
+def oedo_record(k)
+    local wp = wall.find(oe_plate)
+    local yp = oedo_plate_y
+    local ffl = comp.y(wall.force.contact(wall.find(1)))
+    local fx2 = comp.x(wall.force.contact(wall.find(2)))
+    local fx3 = comp.x(wall.force.contact(wall.find(3)))
+    local fz4 = comp.z(wall.force.contact(wall.find(4)))
+    local fz5 = comp.z(wall.force.contact(wall.find(5)))
+    oe_res(k,1) = oe_tg(k)
+    oe_res(k,2) = comp.y(wall.force.contact(wp)) / oe_A
+    oe_res(k,3) = -ffl / oe_A
+    oe_res(k,4) = yp
+    oe_res(k,5) = (-fx2 + fx3 - fz4 + fz5) / (4.0 * oe_L * yp)
+    oe_res(k,6) = oe_cnt
+    oe_res(k,7) = mech.solve('aratio')
+    oe_res(k,8) = oe_hitmax
+end
+
+def oedo_stages
+    local k
+    loop k (1, oe_ns)
+        oe_tgt = oe_tg(k)
+        oe_cnt = 0
+        oe_gcnt = 0
+        oe_done = 0
+        oe_hitmax = 0
+        oedo_gain
+        local rep = 0
+        loop while oe_done == 0
+            command
+                solve fishhalt @oedo_halt
+            endcommand
+            rep = rep + 1
+            if rep >= 10 then
+                oe_done = 1
+            endif
+        endloop
+        oedo_record(k)
+        io.out('>>> ' + oe_tag + ' stage ' + string(k) + ': target ' + string(oe_tg(k)/1e3) + ' kPa  sig_plate ' + string(oe_res(k,2)/1e3) + ' kPa  H ' + string(oe_res(k,4)) + ' m  cycles ' + string(oe_cnt) + '  hitmax ' + string(oe_hitmax))
+    endloop
+    oedo_write
+end
+
+def oedo_write
+    local nl = oe_ns + 40
+    local buf = array.create(nl)
+    local L = 1
+    local H0 = oe_res(1,4)
+    buf(L) = 'oedometer  bed = ' + oe_tag + '   box 1.6 x 1.6 m, rigid frictionless side walls + rigid frictionless plate, gravity on'
+    L = L + 1
+    buf(L) = 'N_ball = ' + string(oe_nball) + '   N_bb = ' + string(oe_nbb) + '   E_c(mean) = ' + string(oe_Ec) + '   E_c(min/max) = ' + string(oe_Ecmin) + ' / ' + string(oe_Ecmax) + '   kratio = ' + string(oe_krat) + '   fric = ' + string(oe_fric)
+    L = L + 1
+    buf(L) = 'bed weight W = ' + string(oe_wbed) + ' N   self-weight stress at base = ' + string(oe_wbed/oe_A) + ' Pa   H_seat (5 kPa) = ' + string(H0) + ' m   y_top_initial = ' + string(oe_ytop)
+    L = L + 1
+    buf(L) = 'stage  target_Pa  sig_plate_Pa  sig_floor_Pa  H_m  eps  sig_h_Pa  cycles  aratio  hitmax'
+    L = L + 1
+    local k
+    loop k (1, oe_ns)
+        local eps = (H0 - oe_res(k,4)) / H0
+        buf(L) = string(k) + '  ' + string(oe_res(k,1)) + '  ' + string(oe_res(k,2)) + '  ' + string(oe_res(k,3)) + '  ' + string(oe_res(k,4)) + '  ' + string(eps) + '  ' + string(oe_res(k,5)) + '  ' + string(int(oe_res(k,6))) + '  ' + string(oe_res(k,7)) + '  ' + string(int(oe_res(k,8)))
+        L = L + 1
+    endloop
+    buf(L) = 'increment  from_kPa  to_kPa  M_tan_Pa  K0_inc  nu  E_Pa      (M = dsig_v / (dH/H_prev))'
+    L = L + 1
+    global oe_Es12 = 0.0
+    loop k (2, oe_ns)
+        local ds  = oe_res(k,2) - oe_res(k-1,2)
+        local de  = (oe_res(k-1,4) - oe_res(k,4)) / oe_res(k-1,4)
+        local dsh = oe_res(k,5) - oe_res(k-1,5)
+        local M = 0.0
+        if math.abs(de) > 0.0 then
+            M = ds / de
+        endif
+        local K0 = dsh / ds
+        local nu = K0 / (1.0 + K0)
+        local E = M * (1.0 + nu) * (1.0 - 2.0 * nu) / (1.0 - nu)
+        if k == 6 then
+            oe_Es12 = M
+        endif
+        buf(L) = string(k-1) + '->' + string(k) + '  ' + string(oe_res(k-1,1)/1e3) + '  ' + string(oe_res(k,1)/1e3) + '  ' + string(M) + '  ' + string(K0) + '  ' + string(nu) + '  ' + string(E)
+        L = L + 1
+    endloop
+    buf(L) = 'Es(100-200 kPa) = ' + string(oe_Es12/1e6) + ' MPa'
+    local st = file.open('oedo_' + oe_tag + '.txt', 1, 1)
+    st = file.write(buf, L)
+    st = file.close()
+    io.out('>>> wrote oedo_' + oe_tag + '.txt   Es1-2 = ' + string(oe_Es12/1e6) + ' MPa')
+end

@@ -1,0 +1,208 @@
+**********************************************
+* Logging started at 周四 10月 8 10:29:50 2026
+* By pfc3d Version 5.00 Release 025
+* 
+* 
+* Job Title: 
+**********************************************
+pfc3d>set echo off
+********************************************
+Save file created by
+PFC3D 5.00 Release 025
+周二 9月 29 14:44:52 2026
+Title: 
+Customer: 
+        : 
+********************************************
+>>> oedo soft_w16_wf: N=11520  E_c=20 MPa  kratio=1.5  fric=0.3  y_top=0.338524
+--- The wall plate with id 6 and 2 facets has been created
+>>> fix_wall_contacts: reset 7432 ball-facet contacts to 5e9 / kratio 1 / fric 0 / dp 0
+--- Attribute damp initialized in 11520 ball(s).
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   199999     562001 4.48133E-06 00:02:43:21                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 13:13:14
+>>> soft_w16_wf stage 1: target 5 kPa  sig_plate 1.00757 kPa  H 0.313708 m  cycles 200000  hitmax 1
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   199999     762000 4.48140E-06 00:02:03:44                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 15:16:58
+>>> soft_w16_wf stage 2: target 12.5 kPa  sig_plate 6.55206 kPa  H 0.292434 m  cycles 200000  hitmax 1
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   199999     961999 4.48140E-06 00:01:03:18                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 16:20:16
+>>> soft_w16_wf stage 3: target 25 kPa  sig_plate 22.4299 kPa  H 0.28052 m  cycles 200000  hitmax 1
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   137934    1099933 4.48138E-06 00:01:44:41                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 18:04:58
+>>> soft_w16_wf stage 4: target 50 kPa  sig_plate 49.75 kPa  H 0.277928 m  cycles 137935  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    64412    1164345 4.48138E-06 00:00:24:10                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 18:29:10
+>>> soft_w16_wf stage 5: target 100 kPa  sig_plate 99.5 kPa  H 0.275276 m  cycles 64413  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    70358    1234703 4.48147E-06 00:00:19:56                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 18:49:06
+>>> soft_w16_wf stage 6: target 200 kPa  sig_plate 199 kPa  H 0.270714 m  cycles 70359  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    78770    1313473 4.40948E-06 00:00:22:54                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 19:12:00
+>>> soft_w16_wf stage 7: target 400 kPa  sig_plate 398 kPa  H 0.263182 m  cycles 78771  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   105056    1418529 4.48192E-06 00:00:42:43                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 19:54:44
+>>> soft_w16_wf stage 8: target 800 kPa  sig_plate 796.013 kPa  H 0.250715 m  cycles 105057  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   148243    1566772 4.48231E-06 00:02:42:23                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-08 22:37:08
+>>> soft_w16_wf stage 9: target 1600 kPa  sig_plate 1592 kPa  H 0.231615 m  cycles 148244  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   195804    1762576 2.05407E-06 00:04:24:15                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 03:01:24
+>>> soft_w16_wf stage 10: target 400 kPa  sig_plate 401.973 kPa  H 0.253362 m  cycles 195805  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   192502    1955078 3.04690E-06 00:01:19:16                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 04:20:41
+>>> soft_w16_wf stage 11: target 100 kPa  sig_plate 100.46 kPa  H 0.267309 m  cycles 192503  hitmax 0
+>>> wrote oedo_soft_w16_wf.txt   Es1-2 = 6.0037 MPa
+--- Model saved to file E:/PFC课题/PFC-3D/不同球形-刚性垫层-不同姿态/球形-刚性垫层-不同姿态/球形-长宽0.8 厚0.3/oedo_soft_w16_wf_end.p3sav
+********************************************
+Save file created by
+PFC3D 5.00 Release 025
+周二 9月 29 14:45:52 2026
+Title: 
+Customer: 
+        : 
+********************************************
+>>> oedo med_w16_wf: N=11520  E_c=100 MPa  kratio=1.5  fric=0.3  y_top=0.340482
+--- The wall plate with id 6 and 2 facets has been created
+>>> fix_wall_contacts: reset 7424 ball-facet contacts to 5e9 / kratio 1 / fric 0 / dp 0
+--- Attribute damp initialized in 11520 ball(s).
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   199999     557000 4.47216E-06 00:00:39:32                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 05:00:16
+>>> med_w16_wf stage 1: target 5 kPa  sig_plate 0.848092 kPa  H 0.3158 m  cycles 200000  hitmax 1
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   199999     756999 4.47249E-06 00:03:39:00                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 08:39:16
+>>> med_w16_wf stage 2: target 12.5 kPa  sig_plate 8.08031 kPa  H 0.294875 m  cycles 200000  hitmax 1
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   199999     956998 3.54241E-06 00:02:14:17                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 10:53:34
+>>> med_w16_wf stage 3: target 25 kPa  sig_plate 21.1127 kPa  H 0.28262 m  cycles 200000  hitmax 1
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   153140    1110138 4.47258E-06 00:00:36:57                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 11:30:32
+>>> med_w16_wf stage 4: target 50 kPa  sig_plate 49.7528 kPa  H 0.280158 m  cycles 153141  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    26998    1137136 4.47266E-06 00:00:06:09                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 11:36:42
+>>> med_w16_wf stage 5: target 100 kPa  sig_plate 99.5001 kPa  H 0.279464 m  cycles 26999  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    24074    1161210 4.47273E-06 00:00:05:32                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 11:42:14
+>>> med_w16_wf stage 6: target 200 kPa  sig_plate 199.001 kPa  H 0.278141 m  cycles 24075  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    22732    1183942 4.47292E-06 00:00:05:18                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 11:47:32
+>>> med_w16_wf stage 7: target 400 kPa  sig_plate 398.013 kPa  H 0.275936 m  cycles 22733  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    32476    1216418 4.47331E-06 00:00:07:43                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 11:55:16
+>>> med_w16_wf stage 8: target 800 kPa  sig_plate 796.004 kPa  H 0.272171 m  cycles 32477  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    50930    1267348 4.22912E-06 00:00:12:34                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 12:07:51
+>>> med_w16_wf stage 9: target 1600 kPa  sig_plate 1592.01 kPa  H 0.265795 m  cycles 50931  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    60304    1327652 4.40150E-06 00:00:31:19                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 12:39:11
+>>> med_w16_wf stage 10: target 400 kPa  sig_plate 401.994 kPa  H 0.272962 m  cycles 60305  hitmax 0
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+    42692    1370344 4.47154E-06 00:00:23:12                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 13:02:23
+>>> med_w16_wf stage 11: target 100 kPa  sig_plate 100.5 kPa  H 0.276591 m  cycles 42693  hitmax 0
+>>> wrote oedo_med_w16_wf.txt   Es1-2 = 21.0144 MPa
+--- Model saved to file E:/PFC课题/PFC-3D/不同球形-刚性垫层-不同姿态/球形-刚性垫层-不同姿态/球形-长宽0.8 厚0.3/oedo_med_w16_wf_end.p3sav
+********************************************
+Save file created by
+PFC3D 5.00 Release 025
+周二 9月 29 14:46:51 2026
+Title: 
+Customer: 
+        : 
+********************************************
+>>> oedo stiff_w16_wf: N=11520  E_c=500 MPa  kratio=1.5  fric=0.3  y_top=0.340337
+--- The wall plate with id 6 and 2 facets has been created
+>>> fix_wall_contacts: reset 7423 ball-facet contacts to 5e9 / kratio 1 / fric 0 / dp 0
+--- Attribute damp initialized in 11520 ball(s).
+--- Global FishHalt function oedo_halt.
+    Cycle      Total    Timestep       Clock
+--------- ---------- ----------- ----------- 
+   199999     562001 4.40891E-06 00:02:09:58                                              
+--- FISH function oedo_halt returned 1.
+--- Cycling ended at: 2026-10-09 15:12:30
