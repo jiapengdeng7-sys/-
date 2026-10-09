@@ -31,11 +31,19 @@
 ; ----------------------------------------------------------------
 
 ; restore the settled cushion (brings back cushion balls + floor + walls + cmat)
-[global restore_name = 'cushion_' + cush_tag]
+; MUST be the *_w16_wf beds: these are the ones calibrated by the oedometer test
+; (oedo_*.txt: Es1-2 = 6.0 / 21.0 / 74.4 MPa for soft / med / stiff).
+[global restore_name = 'cushion_' + cush_tag + '_w16_wf']
 restore @restore_name
+; same wall-contact state as the oedometer calibration: reset EVERY ball-facet
+; contact (incl. inactive ones) to 5e9 / kratio 1 / fric 0 / dp 0
+call 'wallfix_fn.p3dat'
+@fix_wall_contacts
+; after this restore cush_tag holds the SAVED tag, e.g. 'stiff_w16_wf'
+[io.out('>>> restored ' + restore_name + '   saved cush_tag = ' + cush_tag)]
 
 ; IMPORTANT: 'restore' reloads the cushion's saved FISH state and WIPES every
-; global set before it. cush_tag survives as the saved tag (it matches), but the
+; global set before it. cush_tag is replaced by the saved tag ('<tag>_w16_wf'), but the
 ; run parameters below were NOT in the genesis save, so they MUST be set HERE,
 ; AFTER the restore, or set_rock_params/apply_spin/apply_impact_vel see them
 ; undefined ("Bad type conversion"). Edit these per run:
@@ -367,6 +375,43 @@ def base_force_y
     global fbase_y = math.abs(comp.y(wall.force.contact(wall.find(1))))
 end
 
+; validity of the linear contact model in the cushion: largest overlap / r_min over
+; every active ball-ball contact that involves a cushion ball (cushion-cushion and
+; rock-cushion), and how many such contacts exceed 10 % of r_min right now.
+; (oedometer estimate: soft reaches ~20 % at 1.6 MPa, med ~4 %, stiff ~0.8 %)
+def cush_overlap
+    local omax = 0.0
+    local n10 = 0
+    local ct
+    loop foreach ct contact.list('ball-ball')
+        local b1 = contact.end1(ct)
+        local b2 = contact.end2(ct)
+        local inv = 0
+        if ball.group(b1) == 'cushion' then
+            inv = 1
+        endif
+        if ball.group(b2) == 'cushion' then
+            inv = 1
+        endif
+        if inv == 1 then
+            local r1 = ball.radius(b1)
+            local r2 = ball.radius(b2)
+            local ov = r1 + r2 - math.mag(ball.pos(b1) - ball.pos(b2))
+            if ov > 0.0 then
+                local ro = ov / math.min(r1, r2)
+                if ro > omax then
+                    omax = ro
+                endif
+                if ro > 0.1 then
+                    n10 = n10 + 1
+                endif
+            endif
+        endif
+    endloop
+    global ovl_now = omax
+    global n_ovl10 = n10
+end
+
 ; ============================================================
 ; 7. main loop  (fragment labelling reused from frag_functions)
 ; ============================================================
@@ -380,11 +425,13 @@ def run_impact
     local rr = 1
     global rec_buf = array.create(3000)
     rec_buf(rr) = 'step  n_intact  n_cracks  break_ratio  com_y  clu_min_y  penetration  fbase_y' + ...
-                  '  ekinetic  ebody  eslip  edashpot  edamp  estrain  epbstrain'
+                  '  ekinetic  ebody  eslip  edashpot  edamp  estrain  epbstrain  ovl_max_r  n_ovl10'
     rr = rr + 1
 
     global pen_max   = 0.0        ; max penetration depth of leading edge below cushion top
     global fbase_max = 0.0        ; peak base force
+    global ovl_max   = 0.0        ; peak cushion overlap / r_min
+    global n10_max   = 0          ; peak number of cushion contacts with overlap > 10 % r_min
     cluster_min_y
     global clu_min_y0 = clu_min_y ; leading edge at t0 (~cushion top + gap)
 
@@ -404,6 +451,13 @@ def run_impact
         cluster_com_y
         cluster_min_y
         base_force_y
+        cush_overlap
+        if ovl_now > ovl_max then
+            ovl_max = ovl_now
+        endif
+        if n_ovl10 > n10_max then
+            n10_max = n_ovl10
+        endif
         local pen = cush_ytop - clu_min_y      ; positive = below original cushion surface
         if pen > pen_max then
             pen_max = pen
@@ -421,7 +475,8 @@ def run_impact
                           '  '+string(mech.energy('edashpot'))+ ...
                           '  '+string(mech.energy('edamp'))+ ...
                           '  '+string(mech.energy('estrain'))+ ...
-                          '  '+string(mech.energy('epbstrain'))
+                          '  '+string(mech.energy('epbstrain'))+ ...
+                          '  '+string(ovl_now)+'  '+string(n_ovl10)
             rr = rr + 1
         endif
 
@@ -449,11 +504,12 @@ def run_impact
     ; ---- result summary ----
     status = file.open('result_summary_' + base_tag + '_' + shape_tag + '_' + full_tag + ...
                        '_v' + string(int(v_impact)) + '.txt', 1, 1)
-    b(1) = 'base  cushion  rock  v_in  n_bond0  n_crack  break_ratio  pen_max  fbase_max'
+    b(1) = 'base  cushion  rock  v_in  n_bond0  n_crack  break_ratio  pen_max  fbase_max  cush_ytop  ovl_max_r  n_ovl10_max'
     status = file.write(b, 1)
     b(1) = base_tag + '  ' + cush_tag + '  ' + str_tag + '  ' + string(v_impact) + '  ' + ...
            string(n_bond0) + '  ' + string(n_crack_final) + '  ' + string(break_ratio) + '  ' + ...
-           string(pen_max) + '  ' + string(fbase_max)
+           string(pen_max) + '  ' + string(fbase_max) + '  ' + string(cush_ytop) + '  ' + ...
+           string(ovl_max) + '  ' + string(n10_max)
     status = file.write(b, 1)
     status = file.close
 
@@ -463,6 +519,7 @@ def run_impact
     io.out('  BREAK RATIO    = ' + string(break_ratio))
     io.out('  max penetration= ' + string(pen_max) + ' m')
     io.out('  peak base force= ' + string(fbase_max) + ' N')
+    io.out('  max overlap/r  = ' + string(ovl_max) + '   max n(overlap>10%) = ' + string(n10_max))
     io.out('=============================================')
 end
 @run_impact
