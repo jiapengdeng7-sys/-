@@ -1,0 +1,598 @@
+; ============================================================
+;  impact_cushion.p3dat   (PFC3D 5.00.25)
+;  Bonded rock cluster impacting a LOOSE GRANULAR SAND CUSHION
+;  (rock strength x cushion stiffness study, Option C).
+;
+;  Structure: RESTORE a pre-settled cushion (cushion_<tag>.p3sav made by
+;  cushion_genesis.p3dat), import the calibrated rock cluster above the
+;  cushion surface, apply impact velocity, run, and record the SAME outputs
+;  as the rigid-wall study (break_history / result_summary / energy_check /
+;  fragment mass) PLUS cushion-specific metrics (penetration depth, peak
+;  base force).
+;
+;  Rock micro-parameters are the FINAL calibrated values (virtual UCS tests):
+;    s20     UCS 19.0 MPa : lin 1.00e9/k2.0 , pb 27.2e9/k10.2, pt 20e6 , coh 100e6
+;    Bedford UCS 53.1 MPa : lin 2.51e9/k2.0 , pb 68.4e9/k7.2 , pt 51.4e6, coh 257e6
+;    Berea   UCS 73.7 MPa : lin 1.55e9/k2.0 , pb 42.0e9/k14.0, pt 74e6 , coh 370e6
+;    Nevada  UCS 130.4 MPa: lin 5.00e9/k2.0 , pb 167.0e9/k7.2, pt 123e6, coh 560e6
+;  (pb_fa 60, dens 2650, 5x coh except Nevada which is set explicitly.)
+;
+;  EDIT the four SELECT lines below per run:
+;    cush_tag  : 'soft' | 'med' | 'stiff'   (E_c 20/100/500 MPa; 100 = Qiu 2022
+;                                            reference, 20/500 = sensitivity levels,
+;                                            i.e. DEM contact modulus, this study's design)
+;    rock_sel  : 1 s20 | 2 bedford | 3 berea | 4 nevada
+;    spin_deg  : 0 | 120 | 240              (azimuth ensemble)
+;    v_impact  : 30.0                       (single velocity, fragmentation regime)
+; ============================================================
+
+; --------- SELECT: cushion (must be set BEFORE restore) ----------
+[global cush_tag  = 'stiff']       ; 'soft' | 'med' | 'stiff'
+; ----------------------------------------------------------------
+
+; restore the settled cushion (brings back cushion balls + floor + walls + cmat)
+[global restore_name = 'cushion_' + cush_tag]
+restore @restore_name
+
+; IMPORTANT: 'restore' reloads the cushion's saved FISH state and WIPES every
+; global set before it. cush_tag survives as the saved tag (it matches), but the
+; run parameters below were NOT in the genesis save, so they MUST be set HERE,
+; AFTER the restore, or set_rock_params/apply_spin/apply_impact_vel see them
+; undefined ("Bad type conversion"). Edit these per run:
+; --------- SELECT: rock / azimuth / velocity (AFTER restore) -----
+[global rock_sel  = 2]           ; 1 s20 | 2 bedford | 3 berea | 4 nevada
+[global spin_deg  = 0.0]         ; 0 | 120 | 240
+[global v_impact  = 30.0]
+[global run_steps = 350000]      ; impact cycles. 200000 = convergence check for the
+                                 ;   first shot; the main metrics (break_ratio, peak base
+                                 ;   force) settle early, only final penetration / E_kin
+                                 ;   creep late while the cushion settles. Set back to the
+                                 ;   value that plateaus for the production 12-case matrix.
+; ----------------------------------------------------------------
+
+; fresh energy ledger from the moment of impact (cushion is already settled)
+set energy on
+set gravity 0 -9.81 0
+; cushion settled with local damping 0.7 during genesis; clear it for the impact
+; so cushion energy dissipation is physical (friction + contact dashpot dp_nratio),
+; not artificial local damping. The bed is at rest, so this does not disturb it.
+ball attribute damp 0.0 range group 'cushion'
+
+[global base_tag  = 'cush' + cush_tag]
+[global shape_tag = 'sphere_r3']
+[global impact_ang = 0.0]
+[global tilt_deg   = 0.0]
+[global omega_spin = 0.0]
+[global gap_target = 0.02]
+
+; ---- find cushion top surface (place the cluster just above it) ----
+def cushion_top_now
+    local ytop = -1.0e20
+    local bp
+    loop foreach bp ball.list
+        if ball.group(bp) == 'cushion' then
+            local yt = ball.pos.y(bp) + ball.radius(bp)
+            if yt > ytop then
+                ytop = yt
+            endif
+        endif
+    endloop
+    global cush_ytop = ytop
+end
+@cushion_top_now
+[io.out('>>> cushion top surface y = ' + string(cush_ytop) + ' m')]
+
+; ============================================================
+; 1. rock material presets (calibrated)
+; ============================================================
+def set_rock_params
+    ; use flat if-blocks with numeric == (robust to rock_sel being int OR float;
+    ; the earlier 'caseof rock_sel' failed to match because [global rock_sel=2]
+    ; is a float 2.0 and caseof needs an exact int match -> no branch fired ->
+    ; rock_ten etc. stayed undefined -> "Bad type conversion" at the io.out).
+    if rock_sel == 1 then
+        global r_lin_e = 1.00e9
+        global r_lin_k = 2.0
+        global r_pb_e  = 27.2e9
+        global r_pb_k  = 10.2
+        global rock_ten = 20.0e6
+        global rock_coh = 100.0e6
+        global str_tag  = 's20'
+    endif
+    if rock_sel == 2 then
+        global r_lin_e = 2.51e9
+        global r_lin_k = 2.0
+        global r_pb_e  = 68.4e9
+        global r_pb_k  = 7.2
+        global rock_ten = 51.4e6
+        global rock_coh = 257.0e6
+        global str_tag  = 'bedford'
+    endif
+    if rock_sel == 3 then
+        global r_lin_e = 1.55e9
+        global r_lin_k = 2.0
+        global r_pb_e  = 42.0e9
+        global r_pb_k  = 14.0
+        global rock_ten = 74.0e6
+        global rock_coh = 370.0e6
+        global str_tag  = 'berea'
+    endif
+    if rock_sel == 4 then
+        global r_lin_e = 5.00e9
+        global r_lin_k = 2.0
+        global r_pb_e  = 167.0e9
+        global r_pb_k  = 7.2
+        global rock_ten = 123.0e6
+        global rock_coh = 560.0e6
+        global str_tag  = 'nevada'
+    endif
+    io.out('>>> rock = ' + str_tag + '  pb_emod = ' + string(r_pb_e/1e9) + ' GPa  pt = ' + string(rock_ten/1e6) + ' MPa')
+end
+@set_rock_params
+
+; ============================================================
+; 2. import the rock cluster (same 598-ball sphere r3 geometry)
+; ============================================================
+[global cluster_file   = 'cluster_ball_info_sphere_r3.dat']
+[global n_import_lines = 599]
+
+def import_cluster
+    arr_cb = array.create(3000)
+    var_cb = array.create(3000, 20)
+    local data_start = 2
+    local max_j      = 6
+    status = file.open(cluster_file, 0, 1)
+    status = file.read(arr_cb, n_import_lines)
+    status = file.close()
+    local count = 0
+    loop local _i (data_start, n_import_lines)
+        if string.len(arr_cb(_i)) > 0 then
+            loop local _j (1, max_j)
+                var_cb(_i, _j) = string.token(arr_cb(_i), _j)
+                caseof _j
+                    case 1
+                        ball_pos_x = var_cb(_i, _j)
+                    case 2
+                        ball_pos_y = var_cb(_i, _j)
+                    case 3
+                        ball_pos_z = var_cb(_i, _j)
+                    case 4
+                        ball_radius = var_cb(_i, _j)
+                    case 5
+                        ball_id = var_cb(_i, _j)
+                    case 6
+                        ball_group = var_cb(_i, _j)
+                endcase
+            endloop
+            local pos_vec = vector(ball_pos_x, ball_pos_y, ball_pos_z)
+            local new_id  = ball_id + 100000
+            local bp = ball.create(ball_radius, pos_vec, new_id)
+            ball.group(bp) = 'big_cluster'
+            count = count + 1
+        endif
+    endloop
+    io.out('cluster imported: ' + string(count) + ' balls')
+end
+@import_cluster
+
+ball attribute density 2650 damp 0.0 range group 'big_cluster'
+ball property fric 0.5 range group 'big_cluster'
+
+; ============================================================
+; 3. move cluster above the cushion surface (centred in x,z)
+; ============================================================
+[global drop_gap = 0.02]
+def move_cluster_above
+    local cbot = 1e12, ccx = 0.0, ccz = 0.0, cn = 0, bp
+    loop foreach bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            local by = ball.pos.y(bp) - ball.radius(bp)
+            if by < cbot then
+                cbot = by
+            endif
+            ccx = ccx + ball.pos.x(bp)
+            ccz = ccz + ball.pos.z(bp)
+            cn  = cn + 1
+        endif
+    endloop
+    ccx = ccx / cn
+    ccz = ccz / cn
+    local sx = 0.0 - ccx
+    local sz = 0.0 - ccz
+    local sy = (cush_ytop + drop_gap) - cbot
+    loop foreach bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            ball.pos.x(bp) = ball.pos.x(bp) + sx
+            ball.pos.y(bp) = ball.pos.y(bp) + sy
+            ball.pos.z(bp) = ball.pos.z(bp) + sz
+        endif
+    endloop
+    io.out('cluster bottom placed at y = ' + string(cbot + sy) + ' (cushion top ' + string(cush_ytop) + ')')
+end
+@move_cluster_above
+
+; ============================================================
+; 4. install rock bonds (freeze cluster, tag internal contacts, bond)
+; ============================================================
+ball fix vel range group 'big_cluster'
+cycle 1
+
+contact groupbehavior and
+def assign_cc
+    local ct
+    loop foreach ct contact.list('ball-ball')
+        local b1 = contact.end1(ct)
+        local b2 = contact.end2(ct)
+        if ball.group(b1) == 'big_cluster' then
+            if ball.group(b2) == 'big_cluster' then
+                contact.group(ct) = 'big_cluster'
+            endif
+        endif
+    endloop
+end
+@assign_cc
+
+[global rdmin_c    = 0.00859]
+[global rdmax_c    = 0.01375]
+[global bond_gap_c = 0.5 * (rdmin_c + rdmax_c)]
+
+contact model linearpbond range group 'big_cluster'
+contact method bond gap [bond_gap_c]                                    range group 'big_cluster'
+contact method deform emod [r_lin_e] kratio [r_lin_k] &
+       pb_deform emod [r_pb_e] kratio [r_pb_k]                          range group 'big_cluster'
+contact property pb_coh [rock_coh] pb_ten [rock_ten] pb_fa 60 fric 0.5  range group 'big_cluster'
+contact property dp_nratio 0.0                                          range group 'big_cluster'
+contact property lin_force 0.0 0.0 0.0 lin_mode 1 range group 'big_cluster'
+ball attribute contactforce 0 0 0 contactmoment 0 0 0 range group 'big_cluster'
+
+ball free vel range group 'big_cluster'
+ball attribute damp 0.0 range group 'big_cluster'
+
+; ============================================================
+; 5. azimuth (spin about y symmetry axis) + impact velocity
+; ============================================================
+def apply_spin
+    if spin_deg == 0.0 then
+        exit
+    endif
+    local ph = spin_deg * math.pi / 180.0
+    local cp = math.cos(ph)
+    local sp = math.sin(ph)
+    local sm=0.0, cx=0.0, cz=0.0, bp
+    loop foreach bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            local m = ball.mass(bp)
+            sm = sm + m
+            cx = cx + m*ball.pos.x(bp)
+            cz = cz + m*ball.pos.z(bp)
+        endif
+    endloop
+    cx = cx/sm
+    cz = cz/sm
+    local bq
+    loop foreach bq ball.list
+        if ball.group(bq) == 'big_cluster' then
+            local rx = ball.pos.x(bq) - cx
+            local rz = ball.pos.z(bq) - cz
+            ball.pos.x(bq) = cx + (rx*cp + rz*sp)
+            ball.pos.z(bq) = cz + (-rx*sp + rz*cp)
+        endif
+    endloop
+    io.out('  spin applied = ' + string(spin_deg) + ' deg (about y axis)')
+end
+@apply_spin
+
+[global vy0 = -v_impact * math.cos(impact_ang * math.pi / 180.0)]
+[global vz0 =  v_impact * math.sin(impact_ang * math.pi / 180.0)]
+def apply_impact_vel
+    loop foreach local bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            ball.vel.x(bp) = 0.0
+            ball.vel.y(bp) = vy0
+            ball.vel.z(bp) = vz0
+        endif
+    endloop
+    io.out('  v0 = (0, ' + string(vy0) + ', ' + string(vz0) + ') m/s')
+end
+@apply_impact_vel
+
+; file-name tag
+def make_spin_tag
+    if spin_deg == 0.0 then
+        global spin_tag = ''
+    else
+        global spin_tag = '_s' + string(int(spin_deg))
+    endif
+end
+@make_spin_tag
+[global ang_tag = 'a' + string(int(impact_ang)) + '_t' + string(int(tilt_deg)) + spin_tag]
+[global full_tag = str_tag + '_' + ang_tag]
+[io.out('>>> OUTPUT TAG = ' + base_tag + '_' + shape_tag + '_' + full_tag + '_v' + string(int(v_impact)))]
+
+; ============================================================
+; 6. break-count + penetration + base-force helpers
+; ============================================================
+[global clstr = 'big_cluster']
+
+def count_intact
+    local ct, n
+    n = 0
+    loop foreach ct contact.list('ball-ball')
+        if contact.model(ct) == 'linearpbond' then
+            if contact.prop(ct,'pb_state') == 3 then
+                if ball.group(contact.end1(ct)) == clstr then
+                    if ball.group(contact.end2(ct)) == clstr then
+                        n = n + 1
+                    end_if
+                end_if
+            end_if
+        end_if
+    endloop
+    count_intact = n
+end
+
+; cluster centre-of-mass y (penetration proxy = drop of cluster CoM below cushion top)
+def cluster_com_y
+    local sm=0.0, sy=0.0, bp
+    loop foreach bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            local m = ball.mass(bp)
+            sm = sm + m
+            sy = sy + m*ball.pos.y(bp)
+        endif
+    endloop
+    if sm > 0.0 then
+        global com_y = sy/sm
+    else
+        global com_y = 0.0
+    endif
+end
+
+; lowest cluster ball (leading-edge penetration below original cushion surface)
+def cluster_min_y
+    local ymn = 1.0e20, bp
+    loop foreach bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            local yb = ball.pos.y(bp) - ball.radius(bp)
+            if yb < ymn then
+                ymn = yb
+            endif
+        endif
+    endloop
+    global clu_min_y = ymn
+end
+
+; net vertical force transmitted to the rigid base (floor wall id 1)
+def base_force_y
+    global fbase_y = math.abs(comp.y(wall.force.contact(wall.find(1))))
+end
+
+; ============================================================
+; 7. main loop  (fragment labelling reused from frag_functions)
+; ============================================================
+call frag_functions
+
+[global n_bond0 = count_intact]
+[io.out('initial bonds (before impact) = ' + string(n_bond0))]
+
+def run_impact
+    global g_step = 0
+    local rr = 1
+    global rec_buf = array.create(3000)
+    rec_buf(rr) = 'step  n_intact  n_cracks  break_ratio  com_y  clu_min_y  penetration  fbase_y' + ...
+                  '  ekinetic  ebody  eslip  edashpot  edamp  estrain  epbstrain'
+    rr = rr + 1
+
+    global pen_max   = 0.0        ; max penetration depth of leading edge below cushion top
+    global fbase_max = 0.0        ; peak base force
+    cluster_min_y
+    global clu_min_y0 = clu_min_y ; leading edge at t0 (~cushion top + gap)
+
+    local done = 0
+    loop while done == 0
+        command
+            cycle 500
+        end_command
+        g_step = g_step + 500
+
+        local ni  = count_intact
+        local ncr = n_bond0 - ni
+        local br  = 0.0
+        if n_bond0 > 0 then
+            br = float(ncr)/float(n_bond0)
+        endif
+        cluster_com_y
+        cluster_min_y
+        base_force_y
+        local pen = cush_ytop - clu_min_y      ; positive = below original cushion surface
+        if pen > pen_max then
+            pen_max = pen
+        endif
+        if fbase_y > fbase_max then
+            fbase_max = fbase_y
+        endif
+
+        if rr < 2999 then
+            rec_buf(rr) = string(g_step)+'  '+string(ni)+'  '+string(ncr)+'  '+string(br)+'  '+ ...
+                          string(com_y)+'  '+string(clu_min_y)+'  '+string(pen)+'  '+string(fbase_y)+ ...
+                          '  '+string(mech.energy('ekinetic'))+ ...
+                          '  '+string(mech.energy('ebody'))+ ...
+                          '  '+string(mech.energy('eslip'))+ ...
+                          '  '+string(mech.energy('edashpot'))+ ...
+                          '  '+string(mech.energy('edamp'))+ ...
+                          '  '+string(mech.energy('estrain'))+ ...
+                          '  '+string(mech.energy('epbstrain'))
+            rr = rr + 1
+        endif
+
+        if g_step >= run_steps then
+            done = 1
+        endif
+    endloop
+
+    global n_crack_final = n_bond0 - count_intact
+    global break_ratio = 0.0
+    if n_bond0 > 0 then
+        break_ratio = float(n_crack_final)/float(n_bond0)
+    endif
+
+    ; ---- time history file ----
+    status = file.open('break_history_' + base_tag + '_' + shape_tag + '_' + full_tag + ...
+                       '_v' + string(int(v_impact)) + '.txt', 1, 1)
+    b = array.create(1)
+    loop i (1, rr-1)
+        b(1) = rec_buf(i)
+        status = file.write(b, 1)
+    end_loop
+    status = file.close
+
+    ; ---- result summary ----
+    status = file.open('result_summary_' + base_tag + '_' + shape_tag + '_' + full_tag + ...
+                       '_v' + string(int(v_impact)) + '.txt', 1, 1)
+    b(1) = 'base  cushion  rock  v_in  n_bond0  n_crack  break_ratio  pen_max  fbase_max'
+    status = file.write(b, 1)
+    b(1) = base_tag + '  ' + cush_tag + '  ' + str_tag + '  ' + string(v_impact) + '  ' + ...
+           string(n_bond0) + '  ' + string(n_crack_final) + '  ' + string(break_ratio) + '  ' + ...
+           string(pen_max) + '  ' + string(fbase_max)
+    status = file.write(b, 1)
+    status = file.close
+
+    io.out('=========== RESULT (sand cushion) ===========')
+    io.out('  cushion        = ' + cush_tag)
+    io.out('  rock           = ' + str_tag)
+    io.out('  BREAK RATIO    = ' + string(break_ratio))
+    io.out('  max penetration= ' + string(pen_max) + ' m')
+    io.out('  peak base force= ' + string(fbase_max) + ' N')
+    io.out('=============================================')
+end
+@run_impact
+
+@frag_report
+@frag_dist
+@frag_mass_dump
+@frag_dump
+
+[global save_name = 'impact_' + base_tag + '_' + shape_tag + '_' + full_tag + '_v' + string(int(v_impact))]
+save @save_name
+
+; ============================================================
+; 8. energy ledger (cluster impact energy -> where did it go)
+;    residual by conservation; cushion dissipation shows up in eslip/ekinetic
+; ============================================================
+def energy_report
+    local m_tot = 0.0, bp
+    loop foreach bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            m_tot = m_tot + ball.mass(bp)
+        endif
+    endloop
+    global E_in = 0.5 * m_tot * v_impact * v_impact
+    global mass_c = m_tot
+
+    ; cluster-only kinetic energy (rebound / retained by the rock)
+    local ekc = 0.0, nb_now = 0
+    loop foreach bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            nb_now = nb_now + 1
+            local vv = ball.vel(bp)
+            ekc = ekc + 0.5*ball.mass(bp)*(comp.x(vv)^2+comp.y(vv)^2+comp.z(vv)^2)
+            local ww = ball.spin(bp)
+            local ii = 0.4*ball.mass(bp)*ball.radius(bp)^2
+            ekc = ekc + 0.5*ii*(comp.x(ww)^2+comp.y(ww)^2+comp.z(ww)^2)
+        endif
+    endloop
+    global E_kin_cluster = ekc
+    global n_now = nb_now
+
+    global eg_kin = mech.energy('ekinetic')      ; ALL balls (cluster + cushion)
+    global eg_bod = mech.energy('ebody')
+    global eg_slp = mech.energy('eslip')
+    global eg_dsh = mech.energy('edashpot')
+    global eg_dmp = mech.energy('edamp')
+    global eg_str = mech.energy('estrain')
+    global eg_pbs = mech.energy('epbstrain')
+    global eg_bnd = mech.energy('eboundary')
+    global eg_res = (E_in + eg_bod + eg_bnd) - ...
+                    (eg_kin + eg_str + eg_pbs + eg_dmp + eg_slp + eg_dsh)
+
+    io.out('')
+    io.out('========== ENERGY LEDGER (sand cushion) ==========')
+    io.out('  E_in (0.5 m_cluster v^2) = ' + string(E_in) + ' J')
+    io.out('  cluster KE now           = ' + string(E_kin_cluster) + ' J  (' + string(E_kin_cluster/E_in) + ')')
+    io.out('  ekinetic all balls       = ' + string(eg_kin) + ' J  (' + string(eg_kin/E_in) + ')')
+    io.out('  eslip (friction, all)    = ' + string(eg_slp) + ' J  (' + string(eg_slp/E_in) + ')')
+    io.out('  edashpot                 = ' + string(eg_dsh) + ' J')
+    io.out('  edamp (local)            = ' + string(eg_dmp) + ' J')
+    io.out('  estrain + epbstrain      = ' + string(eg_str+eg_pbs) + ' J')
+    io.out('  residual (unresolved)    = ' + string(eg_res) + ' J  (' + string(eg_res/E_in) + ')')
+    io.out('  cluster balls now        = ' + string(n_now) + ' (imported 598; fewer = left domain)')
+    io.out('==================================================')
+end
+@energy_report
+
+; boundary check: ONLY cluster balls (cushion balls sit against the box walls by design)
+def bnd_check
+    global n_near = 0
+    global m_near = 0.0
+    global bnd_x = 0.0, bnd_y = 0.0, bnd_z = 0.0
+    local bp
+    loop foreach bp ball.list
+        if ball.group(bp) == 'big_cluster' then
+            local ax = math.abs(ball.pos.x(bp))
+            local ay = ball.pos.y(bp)
+            local az = math.abs(ball.pos.z(bp))
+            if ax > bnd_x then
+                bnd_x = ax
+            endif
+            if ay > bnd_y then
+                bnd_y = ay
+            endif
+            if az > bnd_z then
+                bnd_z = az
+            endif
+            if ax > 0.95 then
+                n_near = n_near + 1
+                m_near = m_near + ball.mass(bp)
+            else
+                if az > 0.95 then
+                    n_near = n_near + 1
+                    m_near = m_near + ball.mass(bp)
+                else
+                    if ay > 3.4 then
+                        n_near = n_near + 1
+                        m_near = m_near + ball.mass(bp)
+                    endif
+                endif
+            endif
+        endif
+    endloop
+    io.out('  cluster max |x| = ' + string(bnd_x) + '  max y = ' + string(bnd_y) + '  max |z| = ' + string(bnd_z))
+    io.out('  cluster balls near a boundary = ' + string(n_near))
+end
+@bnd_check
+
+def mass_dump
+    mass_dump = mass_c
+end
+
+def energy_dump
+    local arr = array.create(2)
+    arr(1) = 'case  cushion  rock  m_cluster  v_in  E_in  E_kin_cluster  E_kin_all  ratio_all  ' + ...
+             'ekinetic  ebody  eboundary  eslip  edashpot  edamp  estrain  epbstrain  ' + ...
+             'residual  resid_over_Ein  pen_max  fbase_max  n_near  m_near'
+    arr(2) = base_tag + '_' + shape_tag + '_' + full_tag + '  ' + cush_tag + '  ' + str_tag + '  ' + ...
+             string(mass_c) + '  ' + string(v_impact) + '  ' + string(E_in) + '  ' + ...
+             string(E_kin_cluster) + '  ' + string(eg_kin) + '  ' + string(eg_kin/E_in) + '  ' + ...
+             string(eg_kin) + '  ' + string(eg_bod) + '  ' + string(eg_bnd) + '  ' + ...
+             string(eg_slp) + '  ' + string(eg_dsh) + '  ' + string(eg_dmp) + '  ' + ...
+             string(eg_str) + '  ' + string(eg_pbs) + '  ' + ...
+             string(eg_res) + '  ' + string(eg_res/E_in) + '  ' + ...
+             string(pen_max) + '  ' + string(fbase_max) + '  ' + ...
+             string(n_near) + '  ' + string(m_near)
+    local st = file.open('energy_check_' + base_tag + '_' + shape_tag + '_' + full_tag + ...
+                         '_v' + string(int(v_impact)) + '.txt', 1, 1)
+    st = file.write(arr, 2)
+    st = file.close()
+    io.out('  written energy_check for ' + base_tag + '_' + shape_tag + '_' + full_tag)
+end
+@energy_dump
