@@ -1,0 +1,2 @@
+base  cushion  rock  v_in  n_bond0  n_crack  break_ratio  pen_max  fbase_max  cush_ytop  ovl_max_r  n_ovl10_max
+cushstiff_w16_wf  stiff_w16_wf  bedford  30  2568  0  0  0.340444  264603  0.340337  0.668804  9

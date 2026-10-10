@@ -1,0 +1,2 @@
+case  cushion  rock  m_cluster  v_in  E_in  E_kin_cluster  E_kin_all  ratio_all  ekinetic  ebody  eboundary  eslip  edashpot  edamp  estrain  epbstrain  residual  resid_over_Ein  pen_max  fbase_max  n_near  m_near
+cushmed_w16_wf_sphere_r3_bedford_a0_t0  med_w16_wf  bedford  6.67999  30  3005.99  0.272383  102.803  0.0341994  102.803  -141.232  0  1955.5  807.022  0  0.228081  6.15163e-05  -0.790112  -0.000262845  0.299525  175281  0  0
