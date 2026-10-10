@@ -52,11 +52,13 @@ call 'wallfix_fn.p3dat'
 [global rock_sel  = 2]           ; 1 s20 | 2 bedford | 3 berea | 4 nevada
 [global spin_deg  = 0.0]         ; 0 | 120 | 240
 [global v_impact  = 30.0]
-[global run_steps = 350000]      ; impact cycles. 200000 = convergence check for the
-                                 ;   first shot; the main metrics (break_ratio, peak base
-                                 ;   force) settle early, only final penetration / E_kin
-                                 ;   creep late while the cushion settles. Set back to the
-                                 ;   value that plateaus for the production 12-case matrix.
+[global run_steps = 64000]       ; impact cycles (dt ~7.8e-7 s -> ~50 ms). The first batch
+                                 ;   (350000 cycles = 0.27 s) showed that peak base force,
+                                 ;   bond breakage and dissipation all happen within ~15 ms;
+                                 ;   after that the undamped bed stays agitated and the rock
+                                 ;   keeps sinking at ~0.1-0.45 m/s (stiff: down to the floor),
+                                 ;   so late-time penetration is not usable. Penetration is
+                                 ;   reported at 15 ms and at first arrest instead.
 ; ----------------------------------------------------------------
 
 ; fresh energy ledger from the moment of impact (cushion is already settled)
@@ -67,7 +69,7 @@ set gravity 0 -9.81 0
 ; not artificial local damping. The bed is at rest, so this does not disturb it.
 ball attribute damp 0.0 range group 'cushion'
 
-[global base_tag  = 'cush' + cush_tag]
+[global base_tag  = 'cush' + cush_tag + '_rc']   ; '_rc' = rock-cushion contact fixed (2nd batch)
 [global shape_tag = 'sphere_r3']
 [global impact_ang = 0.0]
 [global tilt_deg   = 0.0]
@@ -258,6 +260,82 @@ ball free vel range group 'big_cluster'
 ball attribute damp 0.0 range group 'big_cluster'
 
 ; ============================================================
+; 4b. rock-cushion contact stiffness (SAME for all three cushions)
+;  The oedometer calibrates the BULK stiffness of the bed (Es1-2), which the DEM gets
+;  from soft grains (E_c 20/100/500 MPa). With the cushion cmat, a rock ball touching
+;  a cushion grain also got E_c: in batch 1 rock balls sank into soft grains (overlap
+;  up to 1.95 r_min) and no bond broke. Real sand grains are hard (quartz), so the
+;  rock-grain contact gets the rock's own linear modulus here; cushion-cushion
+;  contacts keep their calibrated E_c (cushion stiffness stays the only variable).
+; ============================================================
+def read_cush_dp
+    global rc_dp = 0.0
+    loop foreach local ct contact.list('ball-ball')
+        if ball.group(contact.end1(ct)) == 'cushion' then
+            if ball.group(contact.end2(ct)) == 'cushion' then
+                rc_dp = contact.prop(ct, 'dp_nratio')
+                exit
+            endif
+        endif
+    endloop
+end
+@read_cush_dp
+[global rc_E    = r_lin_e]       ; rock linear modulus (bedford 2.51e9)
+[global rc_k    = r_lin_k]
+[global rc_fric = 0.3]           ; cushion grain friction (min of 0.3 / 0.5)
+[io.out('>>> rock-cushion contact: emod ' + string(rc_E) + '  kratio ' + string(rc_k) + '  fric ' + string(rc_fric) + '  dp_nratio ' + string(rc_dp) + ' (copied from cushion)')]
+
+; new contacts with at least ONE ball in 'big_cluster' -> cmat slot 1
+; (internal cluster contacts are already bonded; cmat only acts on NEW contacts,
+;  so do NOT 'cmat apply'. groupbehavior is set back to 'and' before frag_functions)
+contact groupbehavior or
+cmat add 1 model linear method deform emod [rc_E] kratio [rc_k] &
+     property fric [rc_fric] dp_nratio [rc_dp] range group 'big_cluster'
+
+; check / safety net, called every 500 cycles: every active rock-cushion contact must
+; have kn = pi*rmin^2*rc_E/(r1+r2). Any contact that does not (cmat not matched) is
+; corrected and counted in rc_nfix -> rc_nfix should stay 0.
+[global rc_nfix = 0]
+[global rc_n    = 0]
+def fix_rc_contacts
+    local n = 0
+    loop foreach local ct contact.list('ball-ball')
+        local b1 = contact.end1(ct)
+        local b2 = contact.end2(ct)
+        local g1 = ball.group(b1)
+        local g2 = ball.group(b2)
+        local isrc = 0
+        if g1 == 'big_cluster' then
+            if g2 == 'cushion' then
+                isrc = 1
+            endif
+        endif
+        if g1 == 'cushion' then
+            if g2 == 'big_cluster' then
+                isrc = 1
+            endif
+        endif
+        if isrc == 1 then
+            if contact.model(ct) == 'linear' then
+                n = n + 1
+                local r1 = ball.radius(b1)
+                local r2 = ball.radius(b2)
+                local rm = math.min(r1, r2)
+                local kt = math.pi * rm * rm * rc_E / (r1 + r2)
+                if math.abs(contact.prop(ct, 'kn') - kt) > 1.0e-3 * kt then
+                    contact.prop(ct, 'kn') = kt
+                    contact.prop(ct, 'ks') = kt / rc_k
+                    contact.prop(ct, 'fric') = rc_fric
+                    contact.prop(ct, 'dp_nratio') = rc_dp
+                    rc_nfix = rc_nfix + 1
+                endif
+            endif
+        endif
+    endloop
+    rc_n = n
+end
+
+; ============================================================
 ; 5. azimuth (spin about y symmetry axis) + impact velocity
 ; ============================================================
 def apply_spin
@@ -426,7 +504,8 @@ def run_impact
     local rr = 1
     global rec_buf = array.create(3000)
     rec_buf(rr) = 'step  n_intact  n_cracks  break_ratio  com_y  clu_min_y  penetration  fbase_y' + ...
-                  '  ekinetic  ebody  eslip  edashpot  edamp  estrain  epbstrain  ovl_max_r  n_ovl10'
+                  '  ekinetic  ebody  eslip  edashpot  edamp  estrain  epbstrain  ovl_max_r  n_ovl10' + ...
+                  '  t_s  n_rc  rc_nfix'
     rr = rr + 1
 
     global pen_max   = 0.0        ; max penetration depth of leading edge below cushion top
@@ -435,6 +514,12 @@ def run_impact
     global n10_max   = 0          ; peak number of cushion contacts with overlap > 10 % r_min
     cluster_min_y
     global clu_min_y0 = clu_min_y ; leading edge at t0 (~cushion top + gap)
+    global t_imp     = 0.0        ; time since start of run_impact (s)
+    global pen_15ms  = -1.0       ; penetration at t = 15 ms (-1 = not reached)
+    global pen_arr   = -1.0       ; penetration when the cluster CoM first stops (-1 = never)
+    global t_arr     = -1.0
+    cluster_com_y
+    local com_prev = com_y
 
     local done = 0
     loop while done == 0
@@ -442,6 +527,8 @@ def run_impact
             cycle 500
         end_command
         g_step = g_step + 500
+        t_imp = t_imp + 500.0 * global.timestep
+        fix_rc_contacts
 
         local ni  = count_intact
         local ncr = n_bond0 - ni
@@ -463,6 +550,20 @@ def run_impact
         if pen > pen_max then
             pen_max = pen
         endif
+        if pen_15ms < 0.0 then
+            if t_imp >= 0.015 then
+                pen_15ms = pen
+            endif
+        endif
+        if t_arr < 0.0 then
+            if pen > 0.04 then
+                if com_y >= com_prev then
+                    pen_arr = pen
+                    t_arr = t_imp
+                endif
+            endif
+        endif
+        com_prev = com_y
         if fbase_y > fbase_max then
             fbase_max = fbase_y
         endif
@@ -477,7 +578,8 @@ def run_impact
                           '  '+string(mech.energy('edamp'))+ ...
                           '  '+string(mech.energy('estrain'))+ ...
                           '  '+string(mech.energy('epbstrain'))+ ...
-                          '  '+string(ovl_now)+'  '+string(n_ovl10)
+                          '  '+string(ovl_now)+'  '+string(n_ovl10)+ ...
+                          '  '+string(t_imp)+'  '+string(rc_n)+'  '+string(rc_nfix)
             rr = rr + 1
         endif
 
@@ -505,12 +607,15 @@ def run_impact
     ; ---- result summary ----
     status = file.open('result_summary_' + base_tag + '_' + shape_tag + '_' + full_tag + ...
                        '_v' + string(int(v_impact)) + '.txt', 1, 1)
-    b(1) = 'base  cushion  rock  v_in  n_bond0  n_crack  break_ratio  pen_max  fbase_max  cush_ytop  ovl_max_r  n_ovl10_max'
+    b(1) = 'base  cushion  rock  v_in  n_bond0  n_crack  break_ratio  pen_max  fbase_max  cush_ytop  ovl_max_r  n_ovl10_max' + ...
+           '  pen_15ms  pen_arrest  t_arrest  rc_E  rc_nfix  t_end'
     status = file.write(b, 1)
     b(1) = base_tag + '  ' + cush_tag + '  ' + str_tag + '  ' + string(v_impact) + '  ' + ...
            string(n_bond0) + '  ' + string(n_crack_final) + '  ' + string(break_ratio) + '  ' + ...
            string(pen_max) + '  ' + string(fbase_max) + '  ' + string(cush_ytop) + '  ' + ...
-           string(ovl_max) + '  ' + string(n10_max)
+           string(ovl_max) + '  ' + string(n10_max) + '  ' + ...
+           string(pen_15ms) + '  ' + string(pen_arr) + '  ' + string(t_arr) + '  ' + ...
+           string(rc_E) + '  ' + string(rc_nfix) + '  ' + string(t_imp)
     status = file.write(b, 1)
     status = file.close
 
@@ -521,9 +626,13 @@ def run_impact
     io.out('  max penetration= ' + string(pen_max) + ' m')
     io.out('  peak base force= ' + string(fbase_max) + ' N')
     io.out('  max overlap/r  = ' + string(ovl_max) + '   max n(overlap>10%) = ' + string(n10_max))
+    io.out('  pen @15ms      = ' + string(pen_15ms) + ' m   pen @first arrest = ' + string(pen_arr) + ' m at ' + string(t_arr) + ' s')
+    io.out('  rock-cushion contacts corrected by FISH (should be 0) = ' + string(rc_nfix))
     io.out('=============================================')
 end
 @run_impact
+
+contact groupbehavior and        ; back to the setting frag_functions was written for
 
 @frag_report
 @frag_dist
